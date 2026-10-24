@@ -11,6 +11,7 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 import 'package:web/web.dart' as web;
 
 import 'src/video_player.dart';
+import 'src/video_view.dart';
 
 /// The web implementation of [VideoPlayerPlatform].
 ///
@@ -104,14 +105,14 @@ class VideoPlayerPlugin extends VideoPlayerPlatform {
       ..style.height = '100%'
       ..style.width = '100%';
 
-    // TODO(hterkelsen): Use initialization parameters once they are available
-    ui_web.platformViewRegistry.registerViewFactory(
-        'videoPlayer-$playerId', (int viewId) => videoElement);
-
     final VideoPlayer player = VideoPlayer(videoElement: videoElement)
       ..initialize(
         src: uri,
       );
+
+    // TODO(hterkelsen): Use initialization parameters once they are available
+    ui_web.platformViewRegistry.registerViewFactory(
+        'videoPlayer-$playerId', player.views.create);
 
     _videoPlayers[playerId] = player;
 
@@ -169,9 +170,15 @@ class VideoPlayerPlugin extends VideoPlayerPlatform {
     return _videoPlayers[id]!;
   }
 
+  /// The video keeps playing when the view goes, as on the other platforms:
+  /// see `VideoViews`.
   @override
   Widget buildView(int playerId) {
-    return HtmlElementView(viewType: 'videoPlayer-$playerId');
+    return VideoView(
+      key: ValueKey<int>(playerId),
+      viewType: 'videoPlayer-$playerId',
+      views: _videoPlayers[playerId]?.views,
+    );
   }
 
   /// Sets the audio mode to mix with other sources (ignored).
