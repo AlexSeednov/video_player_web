@@ -21,6 +21,20 @@ class VideoPlayerPlugin extends VideoPlayerPlatform {
     VideoPlayerPlatform.instance = VideoPlayerPlugin();
   }
 
+  /// The `<video>` element that plays [playerId], or `null` when there is no
+  /// such player.
+  ///
+  /// For the browser features the platform interface does not cover, such as
+  /// Picture-in-Picture. The element exists from the moment the player is
+  /// created, even while no `VideoPlayer` widget shows it.
+  static web.HTMLVideoElement? videoElementOf(int playerId) {
+    final VideoPlayerPlatform platform = VideoPlayerPlatform.instance;
+    if (platform is! VideoPlayerPlugin) {
+      return null;
+    }
+    return platform._videoPlayers[playerId]?.videoElement;
+  }
+
   // Map of playerId -> VideoPlayer instances.
   final Map<int, VideoPlayer> _videoPlayers = <int, VideoPlayer>{};
 
