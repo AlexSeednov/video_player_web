@@ -1,3 +1,10 @@
+## 2.4.0+2 - Forked
+
+* Adds `VideoPlayerPlugin.videoElementOf`: the `<video>` element of a player,
+  for the browser features the platform interface does not cover, such as
+  Picture-in-Picture. The element is there from the moment the player is
+  created, whether or not a `VideoPlayer` widget shows it.
+
 ## 2.4.0+1 - Forked
 
 * Plays HLS in browsers without native support (Firefox, Chromium before 142):

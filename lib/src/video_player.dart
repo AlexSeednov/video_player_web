@@ -63,6 +63,10 @@ class VideoPlayer {
   /// Returns the [Stream] of [VideoEvent]s from the inner [web.HTMLVideoElement].
   Stream<VideoEvent> get events => _eventController.stream;
 
+  /// The wrapped [web.HTMLVideoElement], handed out by the plugin's
+  /// `videoElementOf`.
+  web.HTMLVideoElement get videoElement => _videoElement;
+
   /// Initializes the wrapped [web.HTMLVideoElement].
   ///
   /// This method sets the required DOM attributes so videos can [play] programmatically,

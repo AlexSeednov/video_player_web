@@ -87,6 +87,15 @@ void main() {
       expect(VideoPlayerPlatform.instance.dispose(await playerId), completes);
     });
 
+    testWidgets('hands out the video element of a live player',
+        (WidgetTester tester) async {
+      final int id = await playerId;
+      expect(VideoPlayerPlugin.videoElementOf(id)?.id, 'videoElement-$id');
+
+      await VideoPlayerPlatform.instance.dispose(id);
+      expect(VideoPlayerPlugin.videoElementOf(id), isNull);
+    });
+
     testWidgets('can set looping', (WidgetTester tester) async {
       expect(
         VideoPlayerPlatform.instance.setLooping(await playerId, true),
