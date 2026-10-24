@@ -13,6 +13,7 @@ import 'package:web/web.dart' as web;
 import 'duration_utils.dart';
 import 'hls.dart';
 import 'pkg_web_tweaks.dart';
+import 'video_views.dart';
 
 // An error code value to error name Map.
 // See: https://developer.mozilla.org/en-US/docs/Web/API/MediaError/code
@@ -66,6 +67,9 @@ class VideoPlayer {
   /// The wrapped [web.HTMLVideoElement], handed out by the plugin's
   /// `videoElementOf`.
   web.HTMLVideoElement get videoElement => _videoElement;
+
+  /// The platform views that show [videoElement].
+  late final VideoViews views = VideoViews(_videoElement);
 
   /// Initializes the wrapped [web.HTMLVideoElement].
   ///
@@ -357,6 +361,7 @@ class VideoPlayer {
       _onContextMenu = null;
     }
     _videoElement.load();
+    views.disposeAll();
   }
 
   // Handler to mark (and broadcast) when this player [_isInitialized].

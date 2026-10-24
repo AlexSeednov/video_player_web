@@ -1,3 +1,12 @@
+## 2.4.0+3 - Forked
+
+* A playing video keeps playing when its `VideoPlayer` widget goes away, as it
+  does on the other platforms: the `<video>` element moves to a hidden
+  container in the document instead of leaving it — a media element out of
+  the document is paused by the browser, and some browsers close its
+  Picture-in-Picture window. A new view takes the element once the engine
+  attaches it, so the playback and Picture-in-Picture carry over as well.
+
 ## 2.4.0+2 - Forked
 
 * Adds `VideoPlayerPlugin.videoElementOf`: the `<video>` element of a player,
