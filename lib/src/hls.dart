@@ -8,10 +8,11 @@ import 'dart:ui_web' as ui_web;
 
 import 'package:web/web.dart' as web;
 
-// HLS playback for browsers that cannot play it natively (Firefox, Chromium
-// before 142): the bundled hls.js feeds the video element through Media
-// Source Extensions. Safari and current Chromium play HLS themselves and never
-// download the script.
+// HLS playback through the bundled hls.js, which feeds the video element
+// through Media Source Extensions. Only Apple's WebKit plays HLS natively:
+// Chromium's built-in HLS (142+) claims support, yet plays MPEG-TS segments
+// only and fails on fragmented MP4 ones, so Chromium goes through hls.js just
+// like Firefox. Safari and iOS browsers never download the script.
 
 /// The MIME type of an HLS playlist.
 const String _hlsMimeType = 'application/vnd.apple.mpegurl';
@@ -66,15 +67,24 @@ extension type HlsErrorData._(JSObject _) implements JSObject {
   external bool get fatal;
 }
 
-/// Whether [src] is an HLS playlist that [element] cannot play by itself.
+/// Whether [src] is an HLS playlist to be played through hls.js rather than
+/// by [element] itself.
 bool needsHlsLibrary(web.HTMLVideoElement element, String src) {
   final String? path = Uri.tryParse(src)?.path.toLowerCase();
   if (path == null || !path.endsWith('.m3u8')) {
     return false;
   }
 
-  return element.canPlayType(_hlsMimeType).isEmpty;
+  return !_isAppleWebKit || !canPlayHlsNatively(element);
 }
+
+/// Whether the browser claims that [element] plays HLS by itself.
+bool canPlayHlsNatively(web.HTMLVideoElement element) =>
+    element.canPlayType(_hlsMimeType).isNotEmpty;
+
+/// Safari and every iOS browser: their native HLS is the reference
+/// implementation and the only one AirPlay can take over.
+bool get _isAppleWebKit => web.window.navigator.vendor.startsWith('Apple');
 
 /// The bundled script, loaded once for all players.
 Future<bool>? _hlsScriptLoading;

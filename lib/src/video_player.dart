@@ -55,7 +55,7 @@ class VideoPlayer {
   bool _isBuffering = false;
   bool _isDisposed = false;
 
-  /// Feeds an HLS source the browser cannot play natively, see [_attachHls].
+  /// Feeds an HLS source outside Apple's WebKit, see [_attachHls].
   Hls? _hls;
 
   /// Whether a fatal media error was already handed to hls.js to recover from.
@@ -140,8 +140,8 @@ class VideoPlayer {
       _eventController.add(VideoEvent(eventType: VideoEventType.completed));
     });
 
-    // An HLS source the browser cannot play natively is loaded by hls.js,
-    // which sets `src` and starts loading itself.
+    // An HLS source outside Apple's WebKit is loaded by hls.js, which sets
+    // `src` and starts loading itself.
     if (src != null && needsHlsLibrary(_videoElement, src)) {
       unawaited(_attachHls(src));
       return;
@@ -162,6 +162,17 @@ class VideoPlayer {
   /// the plugin, so nothing else differs from a natively played source.
   Future<void> _attachHls(String src) async {
     if (!await loadHlsLibrary()) {
+      // No hls.js or no Media Source Extensions: a browser that claims native
+      // HLS still gets its chance.
+      if (canPlayHlsNatively(_videoElement)) {
+        if (!_isDisposed) {
+          _videoElement
+            ..src = src
+            ..load();
+        }
+        return;
+      }
+
       _eventController.addError(PlatformException(
         code: _kErrorValueToErrorName[4]!,
         message: 'HLS is not supported by this browser.',

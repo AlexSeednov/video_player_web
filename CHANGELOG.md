@@ -1,3 +1,11 @@
+## 2.4.0+4 - Forked
+
+* Chromium plays HLS through hls.js too. Its built-in HLS (142+) claims
+  support, yet plays MPEG-TS segments only and fails on fragmented MP4 ones
+  with `DEMUXER_ERROR_COULD_NOT_PARSE`. Native HLS stays with Apple's WebKit —
+  Safari and the iOS browsers. A browser that claims native HLS but cannot
+  run hls.js still plays the source natively.
+
 ## 2.4.0+3 - Forked
 
 * A playing video keeps playing when its `VideoPlayer` widget goes away, as it
