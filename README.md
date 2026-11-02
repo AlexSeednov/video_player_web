@@ -12,6 +12,29 @@ so you do not need to add it to your `pubspec.yaml`.
 However, if you `import` this package to use any of its APIs directly, you
 should add it to your `pubspec.yaml` as usual.
 
+## Configurable HLS buffering in the fork
+
+The matching `video_player` fork exports `VideoPlayerWebHlsOptions`. Pass it as
+`VideoPlayerOptions.webOptions`, or call `controller.setWebOptions` to update a
+running player without changing its source:
+
+```dart
+const options = VideoPlayerWebHlsOptions(
+  maxForwardBufferDuration: Duration(seconds: 120),
+  backBufferDuration: Duration(seconds: 30),
+  maxBufferSizeBytes: 60000000,
+);
+```
+
+Creation-time options are applied before the first HLS fragment is requested.
+The forward duration caps loading and distant non-contiguous forward ranges;
+the back duration limits retained played media. Complete segments may cross a
+threshold. The byte value is a forward target, not a total memory cap: hls.js
+still tries to keep 30 seconds (or the shorter forward horizon).
+Null `backBufferDuration` retains the default unbounded back buffer. Omitting
+HLS options keeps all hls.js defaults. Safari's native HLS and progressive
+files use browser policies and ignore these settings.
+
 ## Limitations on the Web platform
 
 Video playback on the Web platform has some limitations that might surprise developers

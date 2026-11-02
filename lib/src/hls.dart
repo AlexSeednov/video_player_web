@@ -33,11 +33,18 @@ const String hlsNetworkErrorType = 'networkError';
 /// The part of the hls.js `Hls` class the plugin uses.
 @JS('Hls')
 extension type Hls._(JSObject _) implements JSObject {
-  /// A player with the default configuration.
-  external Hls();
+  /// A player with optional overrides for the default configuration.
+  external Hls([HlsConfig? config]);
 
   /// Whether the browser has the Media Source Extensions hls.js needs.
   external static bool isSupported();
+
+  /// The defaults of the bundled hls.js version.
+  @JS('DefaultConfig')
+  external static HlsConfig get defaultConfig;
+
+  /// The active, mutable buffering configuration.
+  external HlsConfig get config;
 
   /// Binds the player to [media]; hls.js sets its `src` itself.
   external void attachMedia(web.HTMLMediaElement media);
@@ -53,6 +60,39 @@ extension type Hls._(JSObject _) implements JSObject {
 
   /// Stops loading and detaches from the media element.
   external void destroy();
+}
+
+/// The hls.js configuration fields used by this plugin.
+extension type HlsConfig._(JSObject _) implements JSObject {
+  /// Caps forward buffering even when a low bitrate would allow more media
+  /// within the byte target. A complete segment may cross this threshold.
+  external factory HlsConfig({
+    required double maxBufferLength,
+    required double maxMaxBufferLength,
+    required double backBufferLength,
+    required double frontBufferFlushThreshold,
+    required int maxBufferSize,
+  });
+
+  /// Loading threshold; never greater than the forward horizon.
+  external double get maxBufferLength;
+  external set maxBufferLength(double value);
+
+  /// Forward loading horizon in seconds.
+  external double get maxMaxBufferLength;
+  external set maxMaxBufferLength(double value);
+
+  /// Played media to retain, in seconds.
+  external double get backBufferLength;
+  external set backBufferLength(double value);
+
+  /// Evicts distant non-contiguous forward ranges after seeking.
+  external double get frontBufferFlushThreshold;
+  external set frontBufferFlushThreshold(double value);
+
+  /// Forward byte target.
+  external int get maxBufferSize;
+  external set maxBufferSize(int value);
 }
 
 /// The payload of [hlsErrorEvent].

@@ -176,7 +176,7 @@ void main() {
         expect(events, <bool>[true, false, true, false, true, false]);
       });
 
-      testWidgets('canplay event does not change buffering state',
+      testWidgets('canplay event ends buffering when enough data is available',
           (WidgetTester tester) async {
         // Take all the "buffering" events that we see during the next few seconds
         final Future<List<bool>> stream = timedStream
@@ -193,8 +193,8 @@ void main() {
 
         final List<bool> events = await stream;
 
-        expect(events, hasLength(1));
-        expect(events, <bool>[true]);
+        expect(events, hasLength(2));
+        expect(events, <bool>[true, false]);
       });
 
       testWidgets('canplaythrough event does change buffering state',

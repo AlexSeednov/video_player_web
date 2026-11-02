@@ -1,3 +1,13 @@
+## 2.4.0+5 - Forked
+
+* Adds `VideoPlayerWebHlsOptions` for forward and back buffer durations and the
+  forward byte target. Options are available before the first segment loads
+  and can be changed without reopening the source. Native browser playback
+  ignores HLS options; complete segments may cross duration thresholds.
+* Publishes buffer changes during pause, including HLS appends and eviction.
+  Ends waiting on `canplay` and completed seeks with enough data, and releases
+  DOM listeners when a player is disposed.
+
 ## 2.4.0+4 - Forked
 
 * Chromium plays HLS through hls.js too. Its built-in HLS (142+) claims

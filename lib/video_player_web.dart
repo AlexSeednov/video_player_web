@@ -10,6 +10,7 @@ import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:web/web.dart' as web;
 
+import 'hls_options.dart';
 import 'src/video_player.dart';
 import 'src/video_view.dart';
 
@@ -105,14 +106,17 @@ class VideoPlayerPlugin extends VideoPlayerPlatform {
       ..style.height = '100%'
       ..style.width = '100%';
 
-    final VideoPlayer player = VideoPlayer(videoElement: videoElement)
-      ..initialize(
+    final VideoPlayer player = VideoPlayer(
+      videoElement: videoElement,
+      options:
+          options is VideoPlayerWebCreationOptions ? options.webOptions : null,
+    )..initialize(
         src: uri,
       );
 
     // TODO(hterkelsen): Use initialization parameters once they are available
-    ui_web.platformViewRegistry.registerViewFactory(
-        'videoPlayer-$playerId', player.views.create);
+    ui_web.platformViewRegistry
+        .registerViewFactory('videoPlayer-$playerId', player.views.create);
 
     _videoPlayers[playerId] = player;
 

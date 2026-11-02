@@ -4,12 +4,15 @@
 
 import 'dart:async';
 import 'dart:js_interop';
+import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:web/web.dart' as web;
 
+import '../hls_options.dart';
 import 'duration_utils.dart';
 import 'hls.dart';
 import 'pkg_web_tweaks.dart';
@@ -43,9 +46,28 @@ class VideoPlayer {
   /// Create a [VideoPlayer] from a [web.HTMLVideoElement] instance.
   VideoPlayer({
     required web.HTMLVideoElement videoElement,
+    VideoPlayerWebOptions? options,
+    @visibleForTesting Future<bool> Function()? hlsLoader,
     @visibleForTesting StreamController<VideoEvent>? eventController,
   })  : _videoElement = videoElement,
-        _eventController = eventController ?? StreamController<VideoEvent>();
+        _eventController = eventController ?? StreamController<VideoEvent>(),
+        _options = options ?? const VideoPlayerWebOptions(),
+        _loadHls = hlsLoader ?? loadHlsLibrary {
+    if (_options case final VideoPlayerWebHlsOptions options)
+      options.validate();
+  }
+
+  /// Owned DOM subscriptions must end before disposing the media element.
+  final List<StreamSubscription<web.Event>> _subscriptions = [];
+
+  /// Keep creation-time options until the lazily loaded hls.js is ready.
+  VideoPlayerWebOptions _options;
+
+  /// The loader is injectable so browser tests need no network requests.
+  final Future<bool> Function() _loadHls;
+
+  /// Avoid duplicate buffer events from DOM events, HLS and position polling.
+  List<DurationRange>? _lastBufferedRanges;
 
   final StreamController<VideoEvent> _eventController;
   final web.HTMLVideoElement _videoElement;
@@ -92,23 +114,27 @@ class VideoPlayer {
       ..controls = false
       ..playsInline = true;
 
-    _videoElement.onCanPlay.listen(_onVideoElementInitialization);
+    _listen(_videoElement.onCanPlay, (event) {
+      _onVideoElementInitialization(event);
+      setBuffering(false);
+      _sendBufferingRangesUpdate();
+    });
 
-    _videoElement.onCanPlayThrough.listen((dynamic _) {
+    _listen(_videoElement.onCanPlayThrough, (_) {
       setBuffering(false);
     });
 
-    _videoElement.onPlaying.listen((dynamic _) {
+    _listen(_videoElement.onPlaying, (_) {
       setBuffering(false);
     });
 
-    _videoElement.onWaiting.listen((dynamic _) {
+    _listen(_videoElement.onWaiting, (_) {
       setBuffering(true);
       _sendBufferingRangesUpdate();
     });
 
     // The error event fires when some form of error occurs while attempting to load or perform the media.
-    _videoElement.onError.listen((web.Event _) {
+    _listen(_videoElement.onError, (_) {
       setBuffering(false);
       // The Event itself (_) doesn't contain info about the actual error.
       // We need to look at the HTMLMediaElement.error.
@@ -121,24 +147,38 @@ class VideoPlayer {
       ));
     });
 
-    _videoElement.onPlay.listen((dynamic _) {
+    _listen(_videoElement.onPlay, (_) {
       _eventController.add(VideoEvent(
         eventType: VideoEventType.isPlayingStateUpdate,
         isPlaying: true,
       ));
     });
 
-    _videoElement.onPause.listen((dynamic _) {
+    _listen(_videoElement.onPause, (_) {
       _eventController.add(VideoEvent(
         eventType: VideoEventType.isPlayingStateUpdate,
         isPlaying: false,
       ));
     });
 
-    _videoElement.onEnded.listen((dynamic _) {
+    _listen(_videoElement.onEnded, (_) {
       setBuffering(false);
       _eventController.add(VideoEvent(eventType: VideoEventType.completed));
     });
+
+    // Downloading and eviction continue while paused. MSE changes also arrive
+    // through hls.js below, where a native progress event is not guaranteed.
+    _listen(
+        const web.EventStreamProvider<web.Event>('progress')
+            .forTarget(_videoElement),
+        (_) => _sendBufferingRangesUpdate());
+    _listen(_videoElement.onSeeked, (_) {
+      _sendBufferingRangesUpdate();
+      if (_videoElement.readyState >= web.HTMLMediaElement.HAVE_FUTURE_DATA) {
+        setBuffering(false);
+      }
+    });
+    _applyOptions();
 
     // An HLS source outside Apple's WebKit is loaded by hls.js, which sets
     // `src` and starts loading itself.
@@ -161,7 +201,7 @@ class VideoPlayer {
   /// Plays the HLS [src] through hls.js. The element's own events keep driving
   /// the plugin, so nothing else differs from a natively played source.
   Future<void> _attachHls(String src) async {
-    if (!await loadHlsLibrary()) {
+    if (!await _loadHls()) {
       // No hls.js or no Media Source Extensions: a browser that claims native
       // HLS still gets its chance.
       if (canPlayHlsNatively(_videoElement)) {
@@ -186,16 +226,49 @@ class VideoPlayer {
       return;
     }
 
-    _hls = Hls()
+    final HlsConfig? configuration = _hlsConfiguration;
+    _hls = (configuration == null ? Hls() : Hls(configuration))
       ..on(hlsErrorEvent, _onHlsError.toJS)
+      ..on('hlsBufferAppended', _onHlsBufferChanged.toJS)
+      ..on('hlsBufferFlushed', _onHlsBufferChanged.toJS)
       ..attachMedia(_videoElement)
       ..loadSource(src);
+  }
+
+  /// Null preserves the defaults when the consumer has not opted in.
+  HlsConfig? get _hlsConfiguration {
+    final options = _options;
+    if (options is! VideoPlayerWebHlsOptions) return null;
+    final double forward = options.maxForwardBufferDuration.inMicroseconds /
+        Duration.microsecondsPerSecond;
+    return HlsConfig(
+      maxBufferLength: math.min(Hls.defaultConfig.maxBufferLength, forward),
+      maxMaxBufferLength: forward,
+      backBufferLength: options.backBufferDuration == null
+          ? double.infinity
+          : options.backBufferDuration!.inMicroseconds /
+              Duration.microsecondsPerSecond,
+      frontBufferFlushThreshold: forward,
+      maxBufferSize: options.maxBufferSizeBytes,
+    );
+  }
+
+  /// Both appended and removed ranges must reach the seek bar while paused.
+  void _onHlsBufferChanged(JSString _, JSAny? data) =>
+      _sendBufferingRangesUpdate();
+
+  /// Ignore queued DOM events after the player has been disposed.
+  void _listen(Stream<web.Event> stream, void Function(web.Event) listener) {
+    _subscriptions.add(stream.listen((event) {
+      if (!_isDisposed) listener(event);
+    }));
   }
 
   /// Non-fatal errors hls.js recovers from by itself. A fatal media error gets
   /// one recovery attempt, as hls.js recommends; anything else reaches the
   /// plugin as the element error it would have been natively.
   void _onHlsError(JSString _, HlsErrorData data) {
+    if (_isDisposed) return;
     if (!data.fatal) {
       return;
     }
@@ -319,6 +392,25 @@ class VideoPlayer {
 
   /// Sets options
   Future<void> setOptions(VideoPlayerWebOptions options) async {
+    if (_isDisposed) return;
+    if (options is VideoPlayerWebHlsOptions) options.validate();
+    _options = options;
+    _applyOptions();
+    final hls = _hls;
+    if (hls != null) {
+      final HlsConfig config = _hlsConfiguration ?? Hls.defaultConfig;
+      hls.config
+        ..maxBufferLength = config.maxBufferLength
+        ..maxMaxBufferLength = config.maxMaxBufferLength
+        ..backBufferLength = config.backBufferLength
+        ..frontBufferFlushThreshold = config.frontBufferFlushThreshold
+        ..maxBufferSize = config.maxBufferSize;
+    }
+  }
+
+  /// Applying options never changes src, detaches MSE, or clears buffered data.
+  void _applyOptions() {
+    final options = _options;
     // In case this method is called multiple times, reset options.
     _resetOptions();
 
@@ -363,6 +455,10 @@ class VideoPlayer {
   /// Disposes of the current [web.HTMLVideoElement].
   void dispose() {
     _isDisposed = true;
+    for (final subscription in _subscriptions) {
+      unawaited(subscription.cancel());
+    }
+    _subscriptions.clear();
     _hls?.destroy();
     _hls = null;
 
@@ -416,6 +512,7 @@ class VideoPlayer {
   /// ([_isBuffering]), this dispatches a [VideoEvent].
   @visibleForTesting
   void setBuffering(bool buffering) {
+    if (_isDisposed) return;
     if (_isBuffering != buffering) {
       _isBuffering = buffering;
       _eventController.add(VideoEvent(
@@ -428,8 +525,12 @@ class VideoPlayer {
 
   // Broadcasts the [web.HTMLVideoElement.buffered] status through the [events] stream.
   void _sendBufferingRangesUpdate() {
+    if (_isDisposed) return;
+    final List<DurationRange> ranges = _toDurationRange(_videoElement.buffered);
+    if (listEquals(ranges, _lastBufferedRanges)) return;
+    _lastBufferedRanges = ranges;
     _eventController.add(VideoEvent(
-      buffered: _toDurationRange(_videoElement.buffered),
+      buffered: ranges,
       eventType: VideoEventType.bufferingUpdate,
     ));
   }
